@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Veritabanı
+  postgres:
+    image: postgres:16-alpine
+    container_name: lobby-ai-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lobby_user
+      POSTGRES_PASSWORD: lobby_pass
+      POSTGRES_DB: lobby_ai
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U lobby_user -d lobby_ai']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Next.js Uygulaması
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lobby-ai-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://lobby_user:lobby_pass@postgres:5432/lobby_ai
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      ALLOWED_EMAIL_DOMAIN: ${ALLOWED_EMAIL_DOMAIN:-lobby-pr.com}
+      DEFAULT_AI_MODEL: ${DEFAULT_AI_MODEL:-claude-sonnet-4-6-20250514}
+      MAX_DAILY_TOKENS_PER_USER: ${MAX_DAILY_TOKENS_PER_USER:-500000}
+    ports:
+      - '3000:3000'
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+
+volumes:
+  postgres_data:
