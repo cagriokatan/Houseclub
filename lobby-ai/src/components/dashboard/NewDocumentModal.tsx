@@ -59,9 +59,9 @@ const VARIABLE_LABELS: Record<string, string> = {
 export function NewDocumentModal({ department, template: initialTemplate, onClose, onCreated }: NewDocumentModalProps) {
   const [templates, setTemplates] = useState<Template[]>([])
   const [clients, setClients] = useState<Client[]>([])
-  const [selectedTemplateId, setSelectedTemplateId] = useState(initialTemplate?.id || '')
+  const [selectedTemplateId, setSelectedTemplateId] = useState(initialTemplate?.id || '__none__')
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
-  const [selectedClientId, setSelectedClientId] = useState('')
+  const [selectedClientId, setSelectedClientId] = useState('__none__')
   const [title, setTitle] = useState(initialTemplate?.name ? `${initialTemplate.name} — ` : '')
   const [variables, setVariables] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(false)
@@ -73,9 +73,11 @@ export function NewDocumentModal({ department, template: initialTemplate, onClos
   }, [])
 
   useEffect(() => {
-    if (selectedTemplateId) {
+    if (selectedTemplateId && selectedTemplateId !== '__none__') {
       const tmpl = templates.find((t) => t.id === selectedTemplateId)
       setSelectedTemplate(tmpl || null)
+    } else {
+      setSelectedTemplate(null)
     }
   }, [selectedTemplateId, templates])
 
@@ -118,8 +120,8 @@ export function NewDocumentModal({ department, template: initialTemplate, onClos
         body: JSON.stringify({
           title: title.trim(),
           department,
-          clientId: selectedClientId || null,
-          templateId: selectedTemplateId || null,
+          clientId: selectedClientId !== '__none__' ? selectedClientId : null,
+          templateId: selectedTemplateId !== '__none__' ? selectedTemplateId : null,
           templateVariables: variables,
           content: '',
         }),
@@ -132,10 +134,10 @@ export function NewDocumentModal({ department, template: initialTemplate, onClos
       }
 
       // Şablon ve müşteri bilgilerini session storage'a yaz (editör sayfası okuyacak)
-      if (selectedTemplateId && Object.keys(variables).length > 0) {
+      if (selectedTemplateId !== '__none__' && Object.keys(variables).length > 0) {
         sessionStorage.setItem(`doc-${docData.document.id}-init`, JSON.stringify({
           templateId: selectedTemplateId,
-          clientId: selectedClientId,
+          clientId: selectedClientId !== '__none__' ? selectedClientId : null,
           variables,
           autoGenerate: true,
         }))
@@ -184,7 +186,7 @@ export function NewDocumentModal({ department, template: initialTemplate, onClos
                 <SelectValue placeholder="Şablon seçin veya serbest oluşturun" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Şablonsuz (Serbest)</SelectItem>
+                <SelectItem value="__none__">Şablonsuz (Serbest)</SelectItem>
                 {templates.map((t) => (
                   <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
                 ))}
@@ -199,7 +201,7 @@ export function NewDocumentModal({ department, template: initialTemplate, onClos
                 <SelectValue placeholder="Müşteri seçin" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Müşterisiz</SelectItem>
+                <SelectItem value="__none__">Müşterisiz</SelectItem>
                 {clients.map((c) => (
                   <SelectItem key={c.id} value={c.id}>
                     {c.name} — {c.sector}
@@ -253,7 +255,7 @@ export function NewDocumentModal({ department, template: initialTemplate, onClos
                 <Loader2 className="w-4 h-4 animate-spin" />
                 Oluşturuluyor...
               </>
-            ) : selectedTemplateId ? (
+            ) : selectedTemplateId !== '__none__' ? (
               'Oluştur ve AI Üret'
             ) : (
               'Doküman Oluştur'

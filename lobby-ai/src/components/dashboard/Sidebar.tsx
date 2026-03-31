@@ -32,8 +32,8 @@ interface SidebarProps {
 
 const mainNavItems = [
   { href: '/', label: 'Ana Sayfa', icon: Home },
-  { href: '/medya', label: 'Medya İlişkileri', icon: Newspaper },
   { href: '/musteri', label: 'Müşteri İlişkileri', icon: Handshake },
+  { href: '/medya', label: 'Medya İlişkileri', icon: Newspaper },
   { href: '/etkinlik', label: 'Etkinlik', icon: PartyPopper },
   { href: '/raporlama', label: 'Raporlama', icon: BarChart3 },
 ]

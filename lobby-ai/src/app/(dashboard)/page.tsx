@@ -163,40 +163,34 @@ export default async function DashboardPage() {
                 <p className="text-gray-400 text-xs mt-1">Bir departman çalışma alanından başlayın</p>
               </CardContent>
             ) : (
-              <div className="divide-y divide-gray-100">
-                {recentDocuments.map((doc) => (
-                  <Link key={doc.id} href={`/dokuman/${doc.id}`}>
-                    <div className="flex items-center justify-between px-6 py-4 hover:bg-gray-50 transition-colors">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span className="text-lg">{DEPARTMENT_ICONS[doc.department]}</span>
-                        <div className="min-w-0">
+              <div>
+                {/* Tablo başlığı */}
+                <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-4 px-6 py-3 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  <span>Doküman Adı</span>
+                  <span>Müşteri</span>
+                  <span>Departman</span>
+                  <span>Kim Hazırladı</span>
+                  <span className="text-right">Zaman</span>
+                </div>
+                <div className="divide-y divide-gray-100">
+                  {recentDocuments.map((doc) => (
+                    <Link key={doc.id} href={`/dokuman/${doc.id}`}>
+                      <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-4 items-center px-6 py-3.5 hover:bg-gray-50 transition-colors">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-base shrink-0">{DEPARTMENT_ICONS[doc.department]}</span>
                           <p className="text-sm font-medium text-gray-900 truncate">{doc.title}</p>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-xs text-gray-400">{doc.author.name}</span>
-                            {doc.client && (
-                              <>
-                                <span className="text-gray-200">·</span>
-                                <span className="text-xs text-gray-400">{doc.client.name}</span>
-                              </>
-                            )}
-                          </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-3 shrink-0 ml-4">
-                        <Badge
-                          className={STATUS_COLORS[doc.status]}
-                          variant="outline"
-                        >
-                          {STATUS_LABELS[doc.status]}
-                        </Badge>
-                        <div className="flex items-center gap-1 text-xs text-gray-400">
-                          <Clock className="w-3 h-3" />
+                        <span className="text-sm text-gray-500 truncate">{doc.client?.name || '—'}</span>
+                        <span className="text-sm text-gray-500 truncate">{DEPARTMENT_LABELS[doc.department]}</span>
+                        <span className="text-sm text-gray-500 truncate">{doc.author.name}</span>
+                        <div className="flex items-center gap-1 text-xs text-gray-400 justify-end">
+                          <Clock className="w-3 h-3 shrink-0" />
                           {formatRelativeTime(doc.updatedAt)}
                         </div>
                       </div>
-                    </div>
-                  </Link>
-                ))}
+                    </Link>
+                  ))}
+                </div>
               </div>
             )}
           </Card>
