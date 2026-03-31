@@ -9,7 +9,7 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 })
 
-const DEFAULT_MODEL = process.env.DEFAULT_AI_MODEL || 'claude-sonnet-4-6-20250514'
+const DEFAULT_MODEL = process.env.DEFAULT_AI_MODEL || 'claude-sonnet-4-6'
 const MAX_DAILY_TOKENS = parseInt(process.env.MAX_DAILY_TOKENS_PER_USER || '500000')
 
 export async function POST(req: NextRequest) {
