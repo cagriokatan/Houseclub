@@ -65,6 +65,7 @@ function ToolbarButton({ onClick, isActive, disabled, title, children }: Toolbar
 
 export function TiptapEditor({ content, onChange, placeholder, editable = true }: TiptapEditorProps) {
   const editor = useEditor({
+    immediatelyRender: false,
     extensions: [
       StarterKit,
       Underline,
