@@ -20,13 +20,12 @@ services:
       timeout: 5s
       retries: 5
 
-  # Next.js Uygulaması
+  # Next.js Uygulaması (Development modu)
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: node:22
     container_name: lobby-ai-app
     restart: unless-stopped
+    working_dir: /app
     depends_on:
       postgres:
         condition: service_healthy
@@ -44,6 +43,7 @@ services:
       - .:/app
       - /app/node_modules
       - /app/.next
+    command: sh -c "npm install && npx prisma generate && npx prisma db push && npm run dev"
 
 volumes:
   postgres_data:
