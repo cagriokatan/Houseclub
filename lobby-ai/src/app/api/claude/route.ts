@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
       templateId,
       templateVariables,
       documentId,
-      mode = 'chat', // 'chat' | 'generate' | 'refine'
+      mode = 'chat',
     } = body
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -74,100 +74,53 @@ export async function POST(req: NextRequest) {
       systemPrompt = buildSystemPrompt(department as Department, client || undefined)
     }
 
-    // Streaming response
-    const encoder = new TextEncoder()
-    const stream = new ReadableStream({
-      async start(controller) {
-        let inputTokens = 0
-        let outputTokens = 0
-        let fullContent = ''
+    // Claude API çağrısı (streaming olmadan)
+    const message = await anthropic.messages.create({
+      model: DEFAULT_MODEL,
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages: messages.map((m: { role: string; content: string }) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      })),
+    })
 
-        try {
-          const claudeStream = await anthropic.messages.create({
-            model: DEFAULT_MODEL,
-            max_tokens: 4096,
-            system: systemPrompt,
-            messages: messages.map((m: any) => ({
-              role: m.role,
-              content: m.content,
-            })),
-            stream: true,
-          })
+    const content = message.content[0]?.type === 'text' ? message.content[0].text : ''
+    const inputTokens = message.usage.input_tokens
+    const outputTokens = message.usage.output_tokens
+    const cost = calculateCost(inputTokens, outputTokens)
 
-          for await (const event of claudeStream) {
-            if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-              fullContent += event.delta.text
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({ type: 'text', text: event.delta.text })}\n\n`)
-              )
-            } else if (event.type === 'message_start' && event.message.usage) {
-              inputTokens = event.message.usage.input_tokens
-            } else if (event.type === 'message_delta' && event.usage) {
-              outputTokens = event.usage.output_tokens
-            } else if (event.type === 'message_stop') {
-              const cost = calculateCost(inputTokens, outputTokens)
-
-              // Token kullanımını kaydet
-              await prisma.aISession.create({
-                data: {
-                  userId: session.user.id!,
-                  messages: messages,
-                  totalInputTokens: inputTokens,
-                  totalOutputTokens: outputTokens,
-                  estimatedCost: cost,
-                  model: DEFAULT_MODEL,
-                },
-              })
-
-              // Aktivite kaydı
-              await prisma.activity.create({
-                data: {
-                  type: 'ai_query',
-                  userId: session.user.id!,
-                  documentId: documentId || null,
-                  metadata: {
-                    mode,
-                    department,
-                    inputTokens,
-                    outputTokens,
-                    cost,
-                  },
-                },
-              })
-
-              controller.enqueue(
-                encoder.encode(
-                  `data: ${JSON.stringify({
-                    type: 'done',
-                    usage: { inputTokens, outputTokens, cost },
-                    content: fullContent,
-                  })}\n\n`
-                )
-              )
-            }
-          }
-        } catch (error) {
-          const message = error instanceof Error ? error.message : 'Claude API hatası'
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ type: 'error', error: message })}\n\n`)
-          )
-        } finally {
-          controller.close()
-        }
+    // Token kullanımını kaydet
+    await prisma.aISession.create({
+      data: {
+        userId: session.user.id!,
+        messages: messages,
+        totalInputTokens: inputTokens,
+        totalOutputTokens: outputTokens,
+        estimatedCost: cost,
+        model: DEFAULT_MODEL,
       },
     })
 
-    return new Response(stream, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
+    // Aktivite kaydı
+    await prisma.activity.create({
+      data: {
+        type: 'ai_query',
+        userId: session.user.id!,
+        documentId: documentId || null,
+        metadata: { mode, department, inputTokens, outputTokens, cost },
       },
+    })
+
+    return NextResponse.json({
+      content,
+      usage: { inputTokens, outputTokens, cost },
     })
   } catch (error) {
     console.error('Claude API route hatası:', error)
+    const message = error instanceof Error ? error.message : 'Bilinmeyen hata'
     return NextResponse.json(
-      { error: 'Yapay zeka isteği işlenirken bir hata oluştu. Lütfen tekrar deneyin.' },
+      { error: `Yapay zeka isteği başarısız: ${message}` },
       { status: 500 }
     )
   }
