@@ -95,42 +95,46 @@ export function ChatPanel({
 
       const decoder = new TextDecoder()
       let fullContent = ''
+      let buffer = ''
 
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
 
-        const chunk = decoder.decode(value)
-        const lines = chunk.split('\n')
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
 
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6))
+          if (!line.startsWith('data: ')) continue
+          const raw = line.slice(6).trim()
+          if (!raw) continue
 
-              if (data.type === 'text') {
-                fullContent += data.text
-                setStreamingContent(fullContent)
-              } else if (data.type === 'done') {
-                const assistantMessage: Message = {
-                  role: 'assistant',
-                  content: data.content || fullContent,
-                  timestamp: new Date(),
-                }
-                setMessages((prev) => [...prev, assistantMessage])
-                setStreamingContent('')
+          let data: any
+          try {
+            data = JSON.parse(raw)
+          } catch {
+            continue
+          }
 
-                if (onContentGenerated) {
-                  // Markdown'ı HTML'e çevir (basit dönüşüm)
-                  const html = markdownToHtml(data.content || fullContent)
-                  onContentGenerated(html)
-                }
-              } else if (data.type === 'error') {
-                throw new Error(data.error)
-              }
-            } catch (parseErr) {
-              // JSON parse hatası — satırı atla
+          if (data.type === 'text') {
+            fullContent += data.text
+            setStreamingContent(fullContent)
+          } else if (data.type === 'done') {
+            const finalContent = data.content || fullContent
+            const assistantMessage: Message = {
+              role: 'assistant',
+              content: finalContent,
+              timestamp: new Date(),
             }
+            setMessages((prev) => [...prev, assistantMessage])
+            setStreamingContent('')
+
+            if (onContentGenerated) {
+              onContentGenerated(markdownToHtml(finalContent))
+            }
+          } else if (data.type === 'error') {
+            throw new Error(data.error)
           }
         }
       }

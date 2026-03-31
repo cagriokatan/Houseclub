@@ -198,9 +198,9 @@ export default function DocumentEditorPage() {
     }
   }
 
-  function handleContentGenerated(html: string) {
+  const handleContentGenerated = useCallback((html: string) => {
     setContent(html)
-  }
+  }, [])
 
   if (isLoading) {
     return (

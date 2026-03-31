@@ -27,6 +27,7 @@ import {
   Minus,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useEffect } from 'react'
 
 interface TiptapEditorProps {
   content: string
@@ -86,6 +87,13 @@ export function TiptapEditor({ content, onChange, placeholder, editable = true }
       onChange(editor.getHTML())
     },
   })
+
+  // Dışarıdan gelen içerik değişince editörü güncelle (AI içeriği aktarımı)
+  useEffect(() => {
+    if (editor && content !== editor.getHTML()) {
+      editor.commands.setContent(content || '', false)
+    }
+  }, [content, editor])
 
   if (!editor) return null
 
