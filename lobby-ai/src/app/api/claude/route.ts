@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
       templateVariables,
       documentId,
       mode = 'chat',
+      imageAttachments,
     } = body
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -74,15 +75,40 @@ export async function POST(req: NextRequest) {
       systemPrompt = buildSystemPrompt(department as Department, client || undefined)
     }
 
+    // Build messages array, injecting image attachments into last user message
+    const formattedMessages = (messages as Array<{ role: string; content: string }>).map(
+      (m, idx) => {
+        if (
+          idx === messages.length - 1 &&
+          m.role === 'user' &&
+          Array.isArray(imageAttachments) &&
+          imageAttachments.length > 0
+        ) {
+          return {
+            role: 'user' as const,
+            content: [
+              ...imageAttachments.map((img: { data: string; mediaType: string }) => ({
+                type: 'image' as const,
+                source: {
+                  type: 'base64' as const,
+                  media_type: img.mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+                  data: img.data,
+                },
+              })),
+              { type: 'text' as const, text: m.content },
+            ],
+          }
+        }
+        return { role: m.role as 'user' | 'assistant', content: m.content }
+      },
+    )
+
     // Claude API çağrısı (streaming olmadan)
     const message = await anthropic.messages.create({
       model: DEFAULT_MODEL,
       max_tokens: 4096,
       system: systemPrompt,
-      messages: messages.map((m: { role: string; content: string }) => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-      })),
+      messages: formattedMessages,
     })
 
     const content = message.content[0]?.type === 'text' ? message.content[0].text : ''
