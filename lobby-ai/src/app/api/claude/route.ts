@@ -289,7 +289,7 @@ export async function POST(req: NextRequest) {
         type: 'ai_query',
         userId: session.user.id!,
         documentId: documentId || null,
-        metadata: { mode, department, inputTokens, outputTokens, cost, webSearch: useSearch },
+        metadata: { mode, department, inputTokens, outputTokens, cost, webSearch: Boolean(process.env.SERPER_API_KEY) },
       },
     })
 
