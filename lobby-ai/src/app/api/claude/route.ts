@@ -84,11 +84,11 @@ async function runAgenticLoop(
       model: DEFAULT_MODEL,
       max_tokens: 4096,
       system: forceFinish
-        ? systemPrompt + '\n\nNOT: Yeterli arama yaptın. Şimdi arama yapmadan toplanan bilgileri kullanarak yanıtı yaz.'
+        ? systemPrompt + '\n\nNOT: Yeterli arama yaptın. Artık web_search aracını KULLANMA. Toplanan bilgileri kullanarak yanıtı şimdi yaz.'
         : systemPrompt,
       messages,
       tools: [WEB_SEARCH_TOOL],
-      tool_choice: forceFinish ? { type: 'none' } : { type: 'auto' },
+      tool_choice: { type: 'auto' },
     })
 
     totalInputTokens += response.usage.input_tokens
