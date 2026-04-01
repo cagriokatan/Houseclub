@@ -4,6 +4,7 @@ import { buildSystemPrompt, fillTemplate, calculateCost } from '@/lib/claude'
 import { prisma } from '@/lib/prisma'
 import Anthropic from '@anthropic-ai/sdk'
 import { Department } from '@prisma/client'
+import { webSearch } from '@/lib/search'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -11,6 +12,134 @@ const anthropic = new Anthropic({
 
 const DEFAULT_MODEL = 'claude-sonnet-4-6'
 const MAX_DAILY_TOKENS = 500000
+
+// ─── Web search tool definition ───────────────────────────────────────────────
+
+const WEB_SEARCH_TOOL: Anthropic.Tool = {
+  name: 'web_search',
+  description:
+    'İnternette güncel haber ve bilgi arar. Kullanıcı son haberler, güncel olaylar, medya kapsama, sosyal medya trendleri veya son dönemde değişmiş olabilecek bilgiler hakkında soru sorduğunda bu aracı kullan. Özellikle basın bülteni, medya tarama raporu veya güncel haber özeti hazırlanırken aktif olarak kullan.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      query: {
+        type: 'string',
+        description:
+          'Arama sorgusu. Türkçe haberler için Türkçe anahtar kelimeler kullan. İngilizce kaynaklara da bakmak için İngilizce sorgular ekleyebilirsin.',
+      },
+      search_type: {
+        type: 'string',
+        enum: ['web', 'news'],
+        description:
+          "Arama türü: 'news' son haberler ve gazete haberleri için, 'web' genel web araması için",
+      },
+    },
+    required: ['query'],
+  },
+}
+
+// ─── Agentic loop with tool use ───────────────────────────────────────────────
+
+async function runAgenticLoop(
+  initialMessages: Anthropic.MessageParam[],
+  systemPrompt: string,
+  useSearch: boolean,
+): Promise<{ content: string; inputTokens: number; outputTokens: number }> {
+  const messages: Anthropic.MessageParam[] = [...initialMessages]
+  let totalInputTokens = 0
+  let totalOutputTokens = 0
+  const maxIterations = 6
+
+  for (let i = 0; i < maxIterations; i++) {
+    const response = await anthropic.messages.create({
+      model: DEFAULT_MODEL,
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages,
+      tools: useSearch ? [WEB_SEARCH_TOOL] : [],
+      tool_choice: useSearch ? { type: 'auto' } : undefined,
+    })
+
+    totalInputTokens += response.usage.input_tokens
+    totalOutputTokens += response.usage.output_tokens
+
+    // Final text response
+    if (response.stop_reason === 'end_turn' || response.stop_reason === 'max_tokens') {
+      const content = response.content
+        .filter((b) => b.type === 'text')
+        .map((b) => (b as Anthropic.TextBlock).text)
+        .join('')
+      return { content, inputTokens: totalInputTokens, outputTokens: totalOutputTokens }
+    }
+
+    // Tool use requested
+    if (response.stop_reason === 'tool_use') {
+      // Add assistant turn
+      messages.push({ role: 'assistant', content: response.content })
+
+      // Execute each tool call
+      const toolResults: Anthropic.ToolResultBlockParam[] = []
+      for (const block of response.content) {
+        if (block.type !== 'tool_use') continue
+
+        const input = block.input as { query: string; search_type?: 'web' | 'news' }
+
+        try {
+          const results = await webSearch(input.query, input.search_type ?? 'news')
+          let resultText: string
+          if (results.length === 0) {
+            resultText = 'Bu sorgu için sonuç bulunamadı.'
+          } else {
+            resultText = results
+              .map((r) => {
+                const lines = [`**${r.title}**`]
+                if (r.source) lines.push(`Kaynak: ${r.source}`)
+                if (r.date) lines.push(`Tarih: ${r.date}`)
+                lines.push(r.snippet)
+                lines.push(`URL: ${r.link}`)
+                return lines.join('\n')
+              })
+              .join('\n\n---\n\n')
+          }
+
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: block.id,
+            content: resultText,
+          })
+        } catch (err) {
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: block.id,
+            content: `Arama hatası: ${err instanceof Error ? err.message : 'Bilinmeyen hata'}`,
+            is_error: true,
+          })
+        }
+      }
+
+      // Add tool results as user turn
+      messages.push({ role: 'user', content: toolResults })
+      continue
+    }
+
+    // Unexpected stop reason — return whatever text we have
+    const content = response.content
+      .filter((b) => b.type === 'text')
+      .map((b) => (b as Anthropic.TextBlock).text)
+      .join('')
+    return { content, inputTokens: totalInputTokens, outputTokens: totalOutputTokens }
+  }
+
+  // Max iterations reached
+  const lastMsg = messages[messages.length - 1]
+  const fallback =
+    typeof lastMsg?.content === 'string'
+      ? lastMsg.content
+      : 'Maksimum döngü sayısına ulaşıldı.'
+  return { content: fallback, inputTokens: totalInputTokens, outputTokens: totalOutputTokens }
+}
+
+// ─── Route handler ─────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   const session = await auth()
@@ -51,7 +180,7 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // Şablon prompt
+    // Sistem prompt
     let systemPrompt: string
     if (templateId && templateVariables) {
       const template = await prisma.template.findUnique({
@@ -67,7 +196,10 @@ export async function POST(req: NextRequest) {
           müşteri_terminoloji: client?.terminology || '',
           'müşteri_kaçınılacak': client?.avoidTerms || '',
         })
-        systemPrompt = buildSystemPrompt(department as Department, client || undefined) + '\n\n' + filledPrompt
+        systemPrompt =
+          buildSystemPrompt(department as Department, client || undefined) +
+          '\n\n' +
+          filledPrompt
       } else {
         systemPrompt = buildSystemPrompt(department as Department, client || undefined)
       }
@@ -75,45 +207,46 @@ export async function POST(req: NextRequest) {
       systemPrompt = buildSystemPrompt(department as Department, client || undefined)
     }
 
-    // Build messages array, injecting image attachments into last user message
-    const formattedMessages = (messages as Array<{ role: string; content: string }>).map(
-      (m, idx) => {
-        if (
-          idx === messages.length - 1 &&
-          m.role === 'user' &&
-          Array.isArray(imageAttachments) &&
-          imageAttachments.length > 0
-        ) {
-          return {
-            role: 'user' as const,
-            content: [
-              ...imageAttachments.map((img: { data: string; mediaType: string }) => ({
-                type: 'image' as const,
-                source: {
-                  type: 'base64' as const,
-                  media_type: img.mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
-                  data: img.data,
-                },
-              })),
-              { type: 'text' as const, text: m.content },
-            ],
-          }
+    // Build messages array — inject image attachments into last user message
+    const formattedMessages: Anthropic.MessageParam[] = (
+      messages as Array<{ role: string; content: string }>
+    ).map((m, idx) => {
+      if (
+        idx === messages.length - 1 &&
+        m.role === 'user' &&
+        Array.isArray(imageAttachments) &&
+        imageAttachments.length > 0
+      ) {
+        return {
+          role: 'user' as const,
+          content: [
+            ...imageAttachments.map((img: { data: string; mediaType: string }) => ({
+              type: 'image' as const,
+              source: {
+                type: 'base64' as const,
+                media_type: img.mediaType as
+                  | 'image/jpeg'
+                  | 'image/png'
+                  | 'image/gif'
+                  | 'image/webp',
+                data: img.data,
+              },
+            })),
+            { type: 'text' as const, text: m.content },
+          ],
         }
-        return { role: m.role as 'user' | 'assistant', content: m.content }
-      },
-    )
-
-    // Claude API çağrısı (streaming olmadan)
-    const message = await anthropic.messages.create({
-      model: DEFAULT_MODEL,
-      max_tokens: 4096,
-      system: systemPrompt,
-      messages: formattedMessages,
+      }
+      return { role: m.role as 'user' | 'assistant', content: m.content }
     })
 
-    const content = message.content[0]?.type === 'text' ? message.content[0].text : ''
-    const inputTokens = message.usage.input_tokens
-    const outputTokens = message.usage.output_tokens
+    // Run agentic loop (search enabled if SERPER_API_KEY is set)
+    const useSearch = Boolean(process.env.SERPER_API_KEY)
+    const { content, inputTokens, outputTokens } = await runAgenticLoop(
+      formattedMessages,
+      systemPrompt,
+      useSearch,
+    )
+
     const cost = calculateCost(inputTokens, outputTokens)
 
     // Token kullanımını kaydet
@@ -134,7 +267,7 @@ export async function POST(req: NextRequest) {
         type: 'ai_query',
         userId: session.user.id!,
         documentId: documentId || null,
-        metadata: { mode, department, inputTokens, outputTokens, cost },
+        metadata: { mode, department, inputTokens, outputTokens, cost, webSearch: useSearch },
       },
     })
 
@@ -147,7 +280,7 @@ export async function POST(req: NextRequest) {
     const message = error instanceof Error ? error.message : 'Bilinmeyen hata'
     return NextResponse.json(
       { error: `Yapay zeka isteği başarısız: ${message}` },
-      { status: 500 }
+      { status: 500 },
     )
   }
 }

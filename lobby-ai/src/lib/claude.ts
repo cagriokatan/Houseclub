@@ -105,7 +105,14 @@ SUNUM (PPT) TALEP EDİLİRSE:
 EXCEL/TABLO TALEP EDİLİRSE:
 - İçeriği düzenli tablo formatında yaz (başlık satırı + veri satırları)
 - Sayısal verileri net kolonlara ayır
-- İçerik hazır olunca "Dışa Aktar → Excel (.xlsx)" butonunu kullanmasını hatırlat`
+- İçerik hazır olunca "Dışa Aktar → Excel (.xlsx)" butonunu kullanmasını hatırlat
+
+WEB ARAMA ARACI (web_search):
+- Güncel haberler, medya tarama, son dönem gelişmeleri veya belirli bir konu/marka hakkında güncel bilgi gerektiğinde web_search aracını kullan
+- "Son 1 hafta", "güncel haberler", "medya yansımaları" gibi taleplerde mutlaka ara
+- Arama sonuçlarını kaynak ve tarihiyle birlikte yanıta yansıt
+- Birden fazla arama yapabilirsin — farklı açılardan konu araştır
+- Türkçe ve İngilizce sorguları birlikte kullanabilirsin`
 }
 
 // Template değişkenlerini doldurma
