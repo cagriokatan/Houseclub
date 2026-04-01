@@ -75,7 +75,10 @@ async function runAgenticLoop(
   const maxIterations = 10
 
   for (let i = 0; i < maxIterations; i++) {
-    // After maxSearchRounds searches, force Claude to stop searching and write the answer
+    // After maxSearchRounds searches, force Claude to stop searching and write the answer.
+    // IMPORTANT: keep tools defined even when forcing finish — the message history may contain
+    // tool_use / tool_result blocks, and the Anthropic API requires tools to be present whenever
+    // those block types appear in the conversation.
     const forceFinish = searchRounds >= maxSearchRounds
     const response = await anthropic.messages.create({
       model: DEFAULT_MODEL,
@@ -84,8 +87,8 @@ async function runAgenticLoop(
         ? systemPrompt + '\n\nNOT: Yeterli arama yaptın. Şimdi arama yapmadan toplanan bilgileri kullanarak yanıtı yaz.'
         : systemPrompt,
       messages,
-      tools: forceFinish ? undefined : [WEB_SEARCH_TOOL],
-      tool_choice: forceFinish ? undefined : { type: 'auto' },
+      tools: [WEB_SEARCH_TOOL],
+      tool_choice: forceFinish ? { type: 'none' } : { type: 'auto' },
     })
 
     totalInputTokens += response.usage.input_tokens
