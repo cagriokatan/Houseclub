@@ -94,7 +94,18 @@ ${buildClientContext(client)}
 - Yanıtını doğrudan doküman içeriğiyle başlat
 - Meta-yorumlar ekleme ("İşte yazdığım basın bülteni:" gibi ifadeler kullanma)
 - Doldurulacak alanları [ALAN ADI] formatında belirt
-- Profesyonel doküman yapısını koru`
+- Profesyonel doküman yapısını koru
+
+SUNUM (PPT) TALEP EDİLİRSE:
+- Her slaytı "# Slayt Başlığı" formatında H1 başlıkla başlat
+- Altına madde işaretli kısa içerik ekle (max 5 madde/slayt)
+- Genellikle 6-10 slayt hazırla: Kapak, Giriş, Ana Bölümler, Sonuç
+- İçerik hazır olunca kullanıcıya "Dışa Aktar → PowerPoint (.pptx)" butonunu kullanmasını hatırlat
+
+EXCEL/TABLO TALEP EDİLİRSE:
+- İçeriği düzenli tablo formatında yaz (başlık satırı + veri satırları)
+- Sayısal verileri net kolonlara ayır
+- İçerik hazır olunca "Dışa Aktar → Excel (.xlsx)" butonunu kullanmasını hatırlat`
 }
 
 // Template değişkenlerini doldurma

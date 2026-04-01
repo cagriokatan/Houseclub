@@ -12,6 +12,8 @@ import {
   Header,
   Footer,
 } from 'docx'
+import pptxgen from 'pptxgenjs'
+import * as XLSX from 'xlsx'
 
 function htmlToDocxParagraphs(html: string): Paragraph[] {
   const paragraphs: Paragraph[] = []
@@ -211,6 +213,139 @@ export async function POST(req: NextRequest) {
         headers: {
           'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
           'Content-Disposition': `attachment; filename="${encodeURIComponent(doc.title)}.docx"`,
+        },
+      })
+    }
+
+    if (format === 'pptx') {
+      const prs = new pptxgen()
+      prs.layout = 'LAYOUT_WIDE'
+      prs.theme = { headFontFace: 'Calibri', bodyFontFace: 'Calibri' }
+
+      // Kapak slaytı
+      const coverSlide = prs.addSlide()
+      coverSlide.background = { color: '1B2A4A' }
+      coverSlide.addText(doc.title, {
+        x: '5%', y: '35%', w: '90%', h: '20%',
+        fontSize: 32, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle',
+      })
+      if (doc.client) {
+        coverSlide.addText(doc.client.name, {
+          x: '5%', y: '57%', w: '90%', h: '8%',
+          fontSize: 18, color: 'E87722', align: 'center',
+        })
+      }
+      coverSlide.addText('Lobby İletişim', {
+        x: '5%', y: '85%', w: '90%', h: '6%',
+        fontSize: 12, color: 'AAAAAA', align: 'center',
+      })
+
+      // HTML içeriğinden slaytlar oluştur
+      const plainText = doc.content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+      const h1Matches = [...doc.content.matchAll(/<h1[^>]*>(.*?)<\/h1>/gi)]
+      const h2Matches = [...doc.content.matchAll(/<h2[^>]*>(.*?)<\/h2>/gi)]
+
+      if (h1Matches.length > 0 || h2Matches.length > 0) {
+        // Başlık bazlı slayt oluşturma
+        const allHeadings = [
+          ...h1Matches.map(m => ({ level: 1, text: m[1].replace(/<[^>]*>/g, '').trim(), index: m.index || 0 })),
+          ...h2Matches.map(m => ({ level: 2, text: m[1].replace(/<[^>]*>/g, '').trim(), index: m.index || 0 })),
+        ].sort((a, b) => a.index - b.index)
+
+        for (let i = 0; i < allHeadings.length; i++) {
+          const heading = allHeadings[i]
+          const nextIndex = allHeadings[i + 1]?.index ?? doc.content.length
+          const sectionHtml = doc.content.slice(heading.index, nextIndex)
+          const sectionText = sectionHtml
+            .replace(/<h[1-6][^>]*>.*?<\/h[1-6]>/gi, '')
+            .replace(/<li[^>]*>/gi, '• ')
+            .replace(/<\/li>/gi, '\n')
+            .replace(/<[^>]*>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 400)
+
+          const slide = prs.addSlide()
+          slide.addText(heading.text, {
+            x: '5%', y: '5%', w: '90%', h: '15%',
+            fontSize: heading.level === 1 ? 28 : 22,
+            bold: true, color: '1B2A4A', valign: 'middle',
+          })
+          slide.addShape(prs.ShapeType.rect, {
+            x: '5%', y: '21%', w: '15%', h: '1%',
+            fill: { color: 'E87722' }, line: { color: 'E87722' },
+          })
+          if (sectionText) {
+            slide.addText(sectionText, {
+              x: '5%', y: '25%', w: '90%', h: '65%',
+              fontSize: 14, color: '333333', valign: 'top', wrap: true,
+            })
+          }
+        }
+      } else {
+        // Başlık yoksa tek slayt
+        const slide = prs.addSlide()
+        slide.addText(doc.title, {
+          x: '5%', y: '5%', w: '90%', h: '15%',
+          fontSize: 24, bold: true, color: '1B2A4A',
+        })
+        slide.addText(plainText.slice(0, 500), {
+          x: '5%', y: '25%', w: '90%', h: '65%',
+          fontSize: 14, color: '333333', wrap: true,
+        })
+      }
+
+      const pptxBuffer = await prs.write({ outputType: 'nodebuffer' }) as Buffer
+
+      await prisma.activity.create({
+        data: { type: 'document_exported', userId: session.user.id!, documentId, metadata: { format: 'pptx' } },
+      })
+      await prisma.document.update({ where: { id: documentId }, data: { status: 'EXPORTED' } })
+
+      return new NextResponse(pptxBuffer, {
+        headers: {
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          'Content-Disposition': `attachment; filename="${encodeURIComponent(doc.title)}.pptx"`,
+        },
+      })
+    }
+
+    if (format === 'xlsx') {
+      const wb = XLSX.utils.book_new()
+
+      // Ana içerik sayfası
+      const plainLines = doc.content
+        .replace(/<\/p>/gi, '\n').replace(/<\/h[1-6]>/gi, '\n').replace(/<\/li>/gi, '\n')
+        .replace(/<li>/gi, '• ').replace(/<[^>]*>/g, '')
+        .split('\n').map(l => l.trim()).filter(Boolean)
+
+      const contentData = plainLines.map(line => [line])
+      const wsContent = XLSX.utils.aoa_to_sheet([[doc.title], [''], ...contentData])
+      wsContent['!cols'] = [{ wch: 100 }]
+      XLSX.utils.book_append_sheet(wb, wsContent, 'İçerik')
+
+      // Bilgi sayfası
+      const infoData = [
+        ['Alan', 'Değer'],
+        ['Doküman Adı', doc.title],
+        ['Müşteri', doc.client?.name || '-'],
+        ['Oluşturan', doc.author.name],
+        ['Tarih', new Date().toLocaleDateString('tr-TR')],
+      ]
+      const wsInfo = XLSX.utils.aoa_to_sheet(infoData)
+      wsInfo['!cols'] = [{ wch: 20 }, { wch: 50 }]
+      XLSX.utils.book_append_sheet(wb, wsInfo, 'Bilgi')
+
+      const xlsxBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
+
+      await prisma.activity.create({
+        data: { type: 'document_exported', userId: session.user.id!, documentId, metadata: { format: 'xlsx' } },
+      })
+
+      return new NextResponse(xlsxBuffer, {
+        headers: {
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'Content-Disposition': `attachment; filename="${encodeURIComponent(doc.title)}.xlsx"`,
         },
       })
     }

@@ -179,19 +179,19 @@ export default function DocumentEditorPage() {
       return
     }
 
-    // DOCX export
-    if (format === 'docx') {
+    // Sunucu taraflı export (docx, pptx, xlsx)
+    if (['docx', 'pptx', 'xlsx'].includes(format)) {
       const res = await fetch('/api/documents/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ documentId: docId, format: 'docx' }),
+        body: JSON.stringify({ documentId: docId, format }),
       })
       if (res.ok) {
         const blob = await res.blob()
         const url = URL.createObjectURL(blob)
         const a = window.document.createElement('a')
         a.href = url
-        a.download = `${title}.docx`
+        a.download = `${title}.${format}`
         a.click()
         URL.revokeObjectURL(url)
       }
@@ -293,6 +293,12 @@ export default function DocumentEditorPage() {
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => exportDocument('docx')}>
                 📄 Word (.docx) olarak indir
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportDocument('pptx')}>
+                📊 PowerPoint (.pptx) olarak indir
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportDocument('xlsx')}>
+                📑 Excel (.xlsx) olarak indir
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => exportDocument('copy')}>
                 📋 Panoya kopyala (düz metin)
