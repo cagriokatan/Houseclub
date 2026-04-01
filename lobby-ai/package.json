@@ -50,6 +50,7 @@
     "pptxgenjs": "^3.12.0",
     "xlsx": "^0.18.5",
     "lucide-react": "^1.7.0",
+    "marked": "^15.0.0",
     "next": "^15.3.0",
     "next-auth": "^5.0.0-beta.30",
     "prisma": "^5.22.0",

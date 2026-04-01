@@ -15,73 +15,108 @@ import {
 import pptxgen from 'pptxgenjs'
 import * as XLSX from 'xlsx'
 
+// HTML içeriğini parçalayarak inline formatlamayı (bold, italic) koruyarak TextRun'lar oluşturur
+function parseInlineFormatting(text: string): TextRun[] {
+  const runs: TextRun[] = []
+  // <strong> ve <em> tag'lerini parse et
+  const regex = /<strong>(.*?)<\/strong>|<em>(.*?)<\/em>|([^<]+)/g
+  let match
+  while ((match = regex.exec(text)) !== null) {
+    if (match[1] !== undefined) {
+      runs.push(new TextRun({ text: match[1], bold: true, font: 'Calibri', size: 23 }))
+    } else if (match[2] !== undefined) {
+      runs.push(new TextRun({ text: match[2], italics: true, font: 'Calibri', size: 23 }))
+    } else if (match[3] !== undefined) {
+      const clean = match[3].replace(/<[^>]*>/g, '').trim()
+      if (clean) runs.push(new TextRun({ text: clean, font: 'Calibri', size: 23 }))
+    }
+  }
+  return runs.length > 0 ? runs : [new TextRun({ text: text.replace(/<[^>]*>/g, ''), font: 'Calibri', size: 23 })]
+}
+
 function htmlToDocxParagraphs(html: string): Paragraph[] {
   const paragraphs: Paragraph[] = []
 
-  // Basit HTML → DOCX dönüşümü
-  const cleanHtml = html
+  // HTML'i satır satır parse et
+  const segments = html
     .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n')
-    .replace(/<\/h[1-6]>/gi, '\n')
-    .replace(/<\/li>/gi, '\n')
-    .replace(/<li>/gi, '• ')
+    .split(/(<h[1-3][^>]*>.*?<\/h[1-3]>|<li[^>]*>.*?<\/li>|<hr[^>]*>|<p[^>]*>.*?<\/p>|<table[\s\S]*?<\/table>)/gi)
+    .filter(s => s.trim())
 
-  const lines = cleanHtml
-    .replace(/<[^>]*>/g, '')
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean)
+  for (const segment of segments) {
+    const trimmed = segment.trim()
+    if (!trimmed) continue
 
-  // Başlık satırlarını tespit et (HTML'den al)
-  const h1Matches = html.match(/<h1[^>]*>(.*?)<\/h1>/gi) || []
-  const h2Matches = html.match(/<h2[^>]*>(.*?)<\/h2>/gi) || []
-  const h3Matches = html.match(/<h3[^>]*>(.*?)<\/h3>/gi) || []
+    // Başlık 1
+    const h1Match = trimmed.match(/<h1[^>]*>(.*?)<\/h1>/i)
+    if (h1Match) {
+      paragraphs.push(new Paragraph({
+        children: [new TextRun({ text: h1Match[1].replace(/<[^>]*>/g, ''), font: 'Calibri', size: 32, bold: true, color: '1B2A4A' })],
+        spacing: { before: 360, after: 180 },
+      }))
+      continue
+    }
 
-  const h1Texts = h1Matches.map((m) => m.replace(/<[^>]*>/g, '').trim())
-  const h2Texts = h2Matches.map((m) => m.replace(/<[^>]*>/g, '').trim())
-  const h3Texts = h3Matches.map((m) => m.replace(/<[^>]*>/g, '').trim())
+    // Başlık 2
+    const h2Match = trimmed.match(/<h2[^>]*>(.*?)<\/h2>/i)
+    if (h2Match) {
+      paragraphs.push(new Paragraph({
+        children: [new TextRun({ text: h2Match[1].replace(/<[^>]*>/g, ''), font: 'Calibri', size: 26, bold: true, color: 'E87722' })],
+        spacing: { before: 300, after: 140 },
+      }))
+      continue
+    }
 
-  for (const line of lines) {
-    if (h1Texts.includes(line)) {
-      paragraphs.push(
-        new Paragraph({
-          text: line,
-          heading: HeadingLevel.HEADING_1,
-          spacing: { before: 300, after: 150 },
-        })
-      )
-    } else if (h2Texts.includes(line)) {
-      paragraphs.push(
-        new Paragraph({
-          text: line,
-          heading: HeadingLevel.HEADING_2,
-          spacing: { before: 240, after: 120 },
-        })
-      )
-    } else if (h3Texts.includes(line)) {
-      paragraphs.push(
-        new Paragraph({
-          text: line,
-          heading: HeadingLevel.HEADING_3,
-          spacing: { before: 200, after: 100 },
-        })
-      )
-    } else if (line.startsWith('• ')) {
-      paragraphs.push(
-        new Paragraph({
-          children: [new TextRun({ text: line, font: 'Calibri', size: 23 })],
-          spacing: { before: 60, after: 60 },
-          indent: { left: 360 },
-        })
-      )
-    } else {
-      paragraphs.push(
-        new Paragraph({
-          children: [new TextRun({ text: line, font: 'Calibri', size: 23 })],
-          spacing: { before: 80, after: 80 },
-          alignment: AlignmentType.JUSTIFIED,
-        })
-      )
+    // Başlık 3
+    const h3Match = trimmed.match(/<h3[^>]*>(.*?)<\/h3>/i)
+    if (h3Match) {
+      paragraphs.push(new Paragraph({
+        children: [new TextRun({ text: h3Match[1].replace(/<[^>]*>/g, ''), font: 'Calibri', size: 24, bold: true, color: '374151' })],
+        spacing: { before: 240, after: 120 },
+      }))
+      continue
+    }
+
+    // Yatay çizgi
+    if (/<hr/i.test(trimmed)) {
+      paragraphs.push(new Paragraph({
+        border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: 'E87722' } },
+        spacing: { before: 200, after: 200 },
+      }))
+      continue
+    }
+
+    // Liste öğesi
+    const liMatch = trimmed.match(/<li[^>]*>(.*?)<\/li>/i)
+    if (liMatch) {
+      const text = liMatch[1].replace(/<[^>]*>/g, '').trim()
+      paragraphs.push(new Paragraph({
+        children: [
+          new TextRun({ text: '    \u2022  ', font: 'Calibri', size: 23, color: 'E87722' }),
+          ...parseInlineFormatting(liMatch[1]),
+        ],
+        spacing: { before: 40, after: 40 },
+        indent: { left: 400 },
+      }))
+      continue
+    }
+
+    // Paragraf (inline formatlama korunarak)
+    const pMatch = trimmed.match(/<p[^>]*>(.*?)<\/p>/is)
+    const content = pMatch ? pMatch[1] : trimmed
+    const cleanContent = content.replace(/<br\s*\/?>/gi, '\n').trim()
+    if (!cleanContent || cleanContent === '&nbsp;') continue
+
+    // Satır satır işle
+    const lines = cleanContent.split('\n')
+    for (const line of lines) {
+      const lt = line.trim()
+      if (!lt) continue
+      paragraphs.push(new Paragraph({
+        children: parseInlineFormatting(lt),
+        spacing: { before: 80, after: 80 },
+        alignment: AlignmentType.JUSTIFIED,
+      }))
     }
   }
 
@@ -115,40 +150,37 @@ export async function POST(req: NextRequest) {
 
     if (format === 'docx') {
       const contentParagraphs = htmlToDocxParagraphs(doc.content)
+      const today = new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })
 
       const docx = new DocxDocument({
         styles: {
           default: {
             document: {
-              run: { font: 'Calibri', size: 24 },
-              paragraph: { spacing: { line: 276 } }, // 1.15 satır aralığı
+              run: { font: 'Calibri', size: 23 },
+              paragraph: { spacing: { line: 300 } },
             },
           },
         },
         sections: [
           {
+            properties: {
+              page: {
+                margin: { top: 1440, right: 1200, bottom: 1440, left: 1200 },
+              },
+            },
             headers: {
               default: new Header({
                 children: [
                   new Paragraph({
                     children: [
-                      new TextRun({
-                        text: 'LOBBY İLETİŞİM',
-                        bold: true,
-                        font: 'Calibri',
-                        size: 18,
-                        color: '1B2A4A',
-                      }),
-                      new TextRun({
-                        text: doc.client ? `  |  ${doc.client.name}` : '',
-                        font: 'Calibri',
-                        size: 18,
-                        color: '666666',
-                      }),
+                      new TextRun({ text: 'LOBBY ', bold: true, font: 'Calibri', size: 20, color: '1B2A4A' }),
+                      new TextRun({ text: 'İLETİŞİM', bold: true, font: 'Calibri', size: 20, color: 'E87722' }),
+                      new TextRun({ text: doc.client ? `    |    ${doc.client.name}` : '', font: 'Calibri', size: 18, color: '888888' }),
                     ],
                     border: {
-                      bottom: { style: BorderStyle.SINGLE, size: 6, color: 'E87722' },
+                      bottom: { style: BorderStyle.SINGLE, size: 8, color: 'E87722', space: 8 },
                     },
+                    spacing: { after: 200 },
                   }),
                 ],
               }),
@@ -158,30 +190,37 @@ export async function POST(req: NextRequest) {
                 children: [
                   new Paragraph({
                     children: [
-                      new TextRun({
-                        text: `${doc.title}  |  Oluşturma Tarihi: ${new Date().toLocaleDateString('tr-TR')}`,
-                        font: 'Calibri',
-                        size: 16,
-                        color: '999999',
-                      }),
+                      new TextRun({ text: 'Lobby İletişim', font: 'Calibri', size: 16, color: '888888', italics: true }),
+                      new TextRun({ text: `    |    ${today}    |    `, font: 'Calibri', size: 16, color: 'AAAAAA' }),
+                      new TextRun({ text: doc.author.name, font: 'Calibri', size: 16, color: '888888' }),
                     ],
+                    border: {
+                      top: { style: BorderStyle.SINGLE, size: 4, color: 'DDDDDD', space: 8 },
+                    },
                   }),
                 ],
               }),
             },
             children: [
-              // Başlık
+              // Doküman başlığı
               new Paragraph({
                 children: [
-                  new TextRun({
-                    text: doc.title,
-                    bold: true,
-                    font: 'Calibri',
-                    size: 36,
-                    color: '1B2A4A',
-                  }),
+                  new TextRun({ text: doc.title, bold: true, font: 'Calibri', size: 40, color: '1B2A4A' }),
                 ],
-                spacing: { before: 0, after: 400 },
+                spacing: { before: 0, after: 120 },
+              }),
+              // Alt bilgi: müşteri + tarih
+              new Paragraph({
+                children: [
+                  ...(doc.client ? [new TextRun({ text: doc.client.name, font: 'Calibri', size: 22, color: 'E87722', bold: true }), new TextRun({ text: '    |    ', font: 'Calibri', size: 22, color: 'CCCCCC' })] : []),
+                  new TextRun({ text: today, font: 'Calibri', size: 22, color: '888888' }),
+                ],
+                spacing: { after: 120 },
+              }),
+              // Turuncu ayraç çizgi
+              new Paragraph({
+                border: { bottom: { style: BorderStyle.SINGLE, size: 12, color: 'E87722' } },
+                spacing: { after: 400 },
               }),
               // İçerik
               ...contentParagraphs,

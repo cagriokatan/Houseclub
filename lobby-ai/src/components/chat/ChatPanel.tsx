@@ -234,26 +234,59 @@ export function ChatPanel({
   )
 }
 
-// Basit Markdown → HTML dönüşümü
+// Basit Markdown → HTML dönüşümü — kendi parser'ımız (marked kütüphanesi client'da çalışmıyor)
 function markdownToHtml(markdown: string): string {
-  return markdown
-    .replace(/^# (.*)/gm, '<h1>$1</h1>')
-    .replace(/^## (.*)/gm, '<h2>$1</h2>')
-    .replace(/^### (.*)/gm, '<h3>$1</h3>')
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/^- (.*)/gm, '<li>$1</li>')
-    .replace(/(<li>[\s\S]*?<\/li>)/gm, '<ul>$1</ul>')
-    .replace(/^\d+\. (.*)/gm, '<li>$1</li>')
-    .replace(/\n\n/g, '</p><p>')
-    .replace(/^(?!<[h|u|o|l])/gm, '')
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => {
-      if (line.startsWith('<h') || line.startsWith('<ul') || line.startsWith('<ol') || line.startsWith('<li')) {
-        return line
-      }
-      return `<p>${line}</p>`
+  let html = markdown
+
+  // Tablolar (önce işle)
+  html = html.replace(/^(\|.+\|)\n(\|[-:\s|]+\|)\n((?:\|.+\|\n?)*)/gm, (_match, header: string, _sep: string, body: string) => {
+    const headerCells = header.split('|').filter((c: string) => c.trim()).map((c: string) => `<th style="padding:8px 12px;background:#1B2A4A;color:white;font-weight:600;text-align:left;border:1px solid #e5e7eb">${c.trim()}</th>`)
+    const rows = body.trim().split('\n').map((row: string) => {
+      const cells = row.split('|').filter((c: string) => c.trim()).map((c: string) => `<td style="padding:8px 12px;border:1px solid #e5e7eb">${c.trim()}</td>`)
+      return `<tr>${cells.join('')}</tr>`
     })
-    .join('\n')
+    return `<table style="width:100%;border-collapse:collapse;margin:16px 0"><thead><tr>${headerCells.join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`
+  })
+
+  // Başlıklar
+  html = html.replace(/^### (.*)/gm, '<h3>$1</h3>')
+  html = html.replace(/^## (.*)/gm, '<h2>$1</h2>')
+  html = html.replace(/^# (.*)/gm, '<h1>$1</h1>')
+
+  // Bold ve italic
+  html = html.replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>')
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+  html = html.replace(/\*(.*?)\*/g, '<em>$1</em>')
+
+  // Yatay çizgi
+  html = html.replace(/^---$/gm, '<hr>')
+
+  // Sıralı liste
+  html = html.replace(/^(\d+)\. (.*)/gm, '<ol-item>$2</ol-item>')
+  html = html.replace(/((?:<ol-item>.*<\/ol-item>\n?)+)/g, (_match, items: string) => {
+    const lis = items.replace(/<ol-item>(.*?)<\/ol-item>/g, '<li>$1</li>')
+    return `<ol>${lis}</ol>`
+  })
+
+  // Sırasız liste
+  html = html.replace(/^[-*] (.*)/gm, '<ul-item>$1</ul-item>')
+  html = html.replace(/((?:<ul-item>.*<\/ul-item>\n?)+)/g, (_match, items: string) => {
+    const lis = items.replace(/<ul-item>(.*?)<\/ul-item>/g, '<li>$1</li>')
+    return `<ul>${lis}</ul>`
+  })
+
+  // Paragraflar — boş satırlarla ayrılmış metin bloklarını <p> ile sar
+  const blocks = html.split(/\n\n+/)
+  html = blocks.map(block => {
+    const trimmed = block.trim()
+    if (!trimmed) return ''
+    if (trimmed.startsWith('<h') || trimmed.startsWith('<table') || trimmed.startsWith('<ul') ||
+        trimmed.startsWith('<ol') || trimmed.startsWith('<hr')) {
+      return trimmed
+    }
+    // Tek satır içindeki \n'leri <br> ile değiştir
+    return `<p>${trimmed.replace(/\n/g, '<br>')}</p>`
+  }).filter(Boolean).join('\n')
+
+  return html
 }
