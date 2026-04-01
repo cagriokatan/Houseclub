@@ -26,8 +26,8 @@ export default function DokümanlarPage() {
   const [documents, setDocuments] = useState<Document[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [department, setDepartment] = useState('')
-  const [status, setStatus] = useState('')
+  const [department, setDepartment] = useState('__all__')
+  const [status, setStatus] = useState('__all__')
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
 
@@ -40,8 +40,8 @@ export default function DokümanlarPage() {
     try {
       const params = new URLSearchParams({ page: page.toString(), limit: '20' })
       if (search) params.set('search', search)
-      if (department) params.set('department', department)
-      if (status) params.set('status', status)
+      if (department && department !== '__all__') params.set('department', department)
+      if (status && status !== '__all__') params.set('status', status)
 
       const res = await fetch(`/api/documents?${params}`)
       const data = await res.json()
@@ -89,7 +89,7 @@ export default function DokümanlarPage() {
               <SelectValue placeholder="Tüm Departmanlar" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Tüm Departmanlar</SelectItem>
+              <SelectItem value="__all__">Tüm Departmanlar</SelectItem>
               {departments.map((d) => (
                 <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>
               ))}
@@ -100,7 +100,7 @@ export default function DokümanlarPage() {
               <SelectValue placeholder="Tüm Durumlar" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Tüm Durumlar</SelectItem>
+              <SelectItem value="__all__">Tüm Durumlar</SelectItem>
               {statuses.map((s) => (
                 <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
               ))}
