@@ -70,16 +70,22 @@ async function runAgenticLoop(
   const messages: Anthropic.MessageParam[] = [...initialMessages]
   let totalInputTokens = 0
   let totalOutputTokens = 0
-  const maxIterations = 8
+  let searchRounds = 0
+  const maxSearchRounds = 3   // max 3 web searches, then force final answer
+  const maxIterations = 10
 
   for (let i = 0; i < maxIterations; i++) {
+    // After maxSearchRounds searches, force Claude to stop searching and write the answer
+    const forceFinish = searchRounds >= maxSearchRounds
     const response = await anthropic.messages.create({
       model: DEFAULT_MODEL,
       max_tokens: 4096,
-      system: systemPrompt,
+      system: forceFinish
+        ? systemPrompt + '\n\nNOT: Yeterli arama yaptın. Şimdi arama yapmadan toplanan bilgileri kullanarak yanıtı yaz.'
+        : systemPrompt,
       messages,
-      tools: [WEB_SEARCH_TOOL],
-      tool_choice: { type: 'auto' },
+      tools: forceFinish ? undefined : [WEB_SEARCH_TOOL],
+      tool_choice: forceFinish ? undefined : { type: 'auto' },
     })
 
     totalInputTokens += response.usage.input_tokens
@@ -96,6 +102,7 @@ async function runAgenticLoop(
 
     // Tool use requested
     if (response.stop_reason === 'tool_use') {
+      searchRounds++
       messages.push({ role: 'assistant', content: response.content })
 
       const toolResults: Anthropic.ToolResultBlockParam[] = []
