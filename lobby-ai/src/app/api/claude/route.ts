@@ -38,17 +38,39 @@ const WEB_SEARCH_TOOL: Anthropic.Tool = {
   },
 }
 
-// ─── Agentic loop with tool use ───────────────────────────────────────────────
+// ─── Simple single-call (no tools) ────────────────────────────────────────────
+
+async function callSimple(
+  messages: Anthropic.MessageParam[],
+  systemPrompt: string,
+): Promise<{ content: string; inputTokens: number; outputTokens: number }> {
+  const response = await anthropic.messages.create({
+    model: DEFAULT_MODEL,
+    max_tokens: 4096,
+    system: systemPrompt,
+    messages,
+  })
+  const content = response.content
+    .filter((b) => b.type === 'text')
+    .map((b) => (b as Anthropic.TextBlock).text)
+    .join('')
+  return {
+    content,
+    inputTokens: response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens,
+  }
+}
+
+// ─── Agentic loop with web search tool ────────────────────────────────────────
 
 async function runAgenticLoop(
   initialMessages: Anthropic.MessageParam[],
   systemPrompt: string,
-  useSearch: boolean,
 ): Promise<{ content: string; inputTokens: number; outputTokens: number }> {
   const messages: Anthropic.MessageParam[] = [...initialMessages]
   let totalInputTokens = 0
   let totalOutputTokens = 0
-  const maxIterations = 6
+  const maxIterations = 8
 
   for (let i = 0; i < maxIterations; i++) {
     const response = await anthropic.messages.create({
@@ -56,8 +78,8 @@ async function runAgenticLoop(
       max_tokens: 4096,
       system: systemPrompt,
       messages,
-      tools: useSearch ? [WEB_SEARCH_TOOL] : [],
-      tool_choice: useSearch ? { type: 'auto' } : undefined,
+      tools: [WEB_SEARCH_TOOL],
+      tool_choice: { type: 'auto' },
     })
 
     totalInputTokens += response.usage.input_tokens
@@ -74,10 +96,8 @@ async function runAgenticLoop(
 
     // Tool use requested
     if (response.stop_reason === 'tool_use') {
-      // Add assistant turn
       messages.push({ role: 'assistant', content: response.content })
 
-      // Execute each tool call
       const toolResults: Anthropic.ToolResultBlockParam[] = []
       for (const block of response.content) {
         if (block.type !== 'tool_use') continue
@@ -86,27 +106,21 @@ async function runAgenticLoop(
 
         try {
           const results = await webSearch(input.query, input.search_type ?? 'news')
-          let resultText: string
-          if (results.length === 0) {
-            resultText = 'Bu sorgu için sonuç bulunamadı.'
-          } else {
-            resultText = results
-              .map((r) => {
-                const lines = [`**${r.title}**`]
-                if (r.source) lines.push(`Kaynak: ${r.source}`)
-                if (r.date) lines.push(`Tarih: ${r.date}`)
-                lines.push(r.snippet)
-                lines.push(`URL: ${r.link}`)
-                return lines.join('\n')
-              })
-              .join('\n\n---\n\n')
-          }
+          const resultText =
+            results.length === 0
+              ? 'Bu sorgu için sonuç bulunamadı.'
+              : results
+                  .map((r) => {
+                    const lines = [`**${r.title}**`]
+                    if (r.source) lines.push(`Kaynak: ${r.source}`)
+                    if (r.date) lines.push(`Tarih: ${r.date}`)
+                    lines.push(r.snippet)
+                    lines.push(`URL: ${r.link}`)
+                    return lines.join('\n')
+                  })
+                  .join('\n\n---\n\n')
 
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: block.id,
-            content: resultText,
-          })
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: resultText })
         } catch (err) {
           toolResults.push({
             type: 'tool_result',
@@ -117,12 +131,11 @@ async function runAgenticLoop(
         }
       }
 
-      // Add tool results as user turn
       messages.push({ role: 'user', content: toolResults })
       continue
     }
 
-    // Unexpected stop reason — return whatever text we have
+    // Any other stop reason — extract text and return
     const content = response.content
       .filter((b) => b.type === 'text')
       .map((b) => (b as Anthropic.TextBlock).text)
@@ -130,13 +143,18 @@ async function runAgenticLoop(
     return { content, inputTokens: totalInputTokens, outputTokens: totalOutputTokens }
   }
 
-  // Max iterations reached
-  const lastMsg = messages[messages.length - 1]
-  const fallback =
-    typeof lastMsg?.content === 'string'
-      ? lastMsg.content
-      : 'Maksimum döngü sayısına ulaşıldı.'
-  return { content: fallback, inputTokens: totalInputTokens, outputTokens: totalOutputTokens }
+  // Max iterations reached — return any text accumulated so far
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]
+    if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+      const text = msg.content
+        .filter((b) => (b as Anthropic.TextBlock).type === 'text')
+        .map((b) => (b as Anthropic.TextBlock).text)
+        .join('')
+      if (text) return { content: text, inputTokens: totalInputTokens, outputTokens: totalOutputTokens }
+    }
+  }
+  return { content: '', inputTokens: totalInputTokens, outputTokens: totalOutputTokens }
 }
 
 // ─── Route handler ─────────────────────────────────────────────────────────────
@@ -239,13 +257,10 @@ export async function POST(req: NextRequest) {
       return { role: m.role as 'user' | 'assistant', content: m.content }
     })
 
-    // Run agentic loop (search enabled if SERPER_API_KEY is set)
-    const useSearch = Boolean(process.env.SERPER_API_KEY)
-    const { content, inputTokens, outputTokens } = await runAgenticLoop(
-      formattedMessages,
-      systemPrompt,
-      useSearch,
-    )
+    // Use agentic loop with web search if SERPER_API_KEY is configured, otherwise simple call
+    const { content, inputTokens, outputTokens } = process.env.SERPER_API_KEY
+      ? await runAgenticLoop(formattedMessages, systemPrompt)
+      : await callSimple(formattedMessages, systemPrompt)
 
     const cost = calculateCost(inputTokens, outputTokens)
 
