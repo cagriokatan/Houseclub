@@ -357,6 +357,7 @@ export default function DocumentEditorPage() {
     const files = Array.from(e.target.files || [])
     for (const file of files) {
       if (file.type.startsWith('image/')) {
+        // Images → base64 for vision API
         const reader = new FileReader()
         reader.onload = () => {
           const base64 = (reader.result as string).split(',')[1]
@@ -366,7 +367,27 @@ export default function DocumentEditorPage() {
           ])
         }
         reader.readAsDataURL(file)
+      } else if (/\.(pdf|docx|pptx|xlsx|xls)$/i.test(file.name)) {
+        // Office / PDF files → server-side text extraction
+        try {
+          const fd = new FormData()
+          fd.append('file', file)
+          const res  = await fetch('/api/parse-file', { method: 'POST', body: fd })
+          const data = await res.json()
+          if (!res.ok) throw new Error(data.error ?? 'Dosya okunamadı')
+          setAttachedFiles((prev) => [
+            ...prev,
+            {
+              name: file.name,
+              type: 'text',
+              textContent: data.text + (data.truncated ? '\n\n[... içerik kısaltıldı]' : ''),
+            },
+          ])
+        } catch (err) {
+          console.error('Dosya ayrıştırma hatası:', err)
+        }
       } else {
+        // Plain text / markdown
         const text = await file.text()
         setAttachedFiles((prev) => [
           ...prev,
@@ -374,7 +395,7 @@ export default function DocumentEditorPage() {
         ])
       }
     }
-    // reset input so same file can be re-attached
+    // Reset so the same file can be re-attached
     e.target.value = ''
   }
 
@@ -748,7 +769,7 @@ export default function DocumentEditorPage() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".txt,.md,image/jpeg,image/png,image/gif,image/webp"
+                accept=".txt,.md,.pdf,.docx,.pptx,.xlsx,.xls,image/jpeg,image/png,image/gif,image/webp"
                 multiple
                 className="hidden"
                 onChange={handleFileUpload}

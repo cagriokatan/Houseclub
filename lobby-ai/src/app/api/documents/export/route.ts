@@ -414,9 +414,9 @@ export async function POST(req: NextRequest) {
       cover.background = { color: NAVY }
 
       // Top orange line
-      cover.addShape(prs.ShapeType.rect, {
-        x: 0, y: 0, w: '100%', h: 0.06,
-        fill: { color: ORANGE }, line: { color: ORANGE },
+      cover.addShape('rect' as Parameters<typeof cover.addShape>[0], {
+        x: 0, y: 0, w: 10, h: 0.06,
+        fill: { color: ORANGE }, line: { color: ORANGE, width: 0 },
       })
       // LOBBY İLETİŞİM brand
       cover.addText('LOBBY İLETİŞİM', {
@@ -424,9 +424,9 @@ export async function POST(req: NextRequest) {
         fontFace: 'Calibri', fontSize: 13, bold: true, color: ORANGE, align: 'left',
       })
       // Horizontal separator
-      cover.addShape(prs.ShapeType.rect, {
+      cover.addShape('rect' as Parameters<typeof cover.addShape>[0], {
         x: 0.5, y: 0.85, w: 2.5, h: 0.04,
-        fill: { color: ORANGE }, line: { color: ORANGE },
+        fill: { color: ORANGE }, line: { color: ORANGE, width: 0 },
       })
       // Document title
       cover.addText(doc.title, {
@@ -447,9 +447,9 @@ export async function POST(req: NextRequest) {
         fontFace: 'Calibri', fontSize: 11, color: '7B93B8', align: 'left',
       })
       // Bottom orange stripe
-      cover.addShape(prs.ShapeType.rect, {
-        x: 0, y: 7.44, w: '100%', h: 0.06,
-        fill: { color: ORANGE }, line: { color: ORANGE },
+      cover.addShape('rect' as Parameters<typeof cover.addShape>[0], {
+        x: 0, y: 7.44, w: 10, h: 0.06,
+        fill: { color: ORANGE }, line: { color: ORANGE, width: 0 },
       })
 
       // ── Content slides ───────────────────────────────────────────────────
@@ -458,63 +458,57 @@ export async function POST(req: NextRequest) {
         slide.background = { color: WHITE }
 
         // Navy header bar
-        slide.addShape(prs.ShapeType.rect, {
-          x: 0, y: 0, w: '100%', h: 1.2,
-          fill: { color: NAVY }, line: { color: NAVY },
+        slide.addShape('rect' as Parameters<typeof slide.addShape>[0], {
+          x: 0, y: 0, w: 10, h: 1.25,
+          fill: { color: NAVY }, line: { color: NAVY, width: 0 },
         })
-        // Orange bottom-stripe on header
-        slide.addShape(prs.ShapeType.rect, {
-          x: 0, y: 1.2, w: '100%', h: 0.05,
-          fill: { color: ORANGE }, line: { color: ORANGE },
+        // Orange accent stripe under header
+        slide.addShape('rect' as Parameters<typeof slide.addShape>[0], {
+          x: 0, y: 1.25, w: 10, h: 0.06,
+          fill: { color: ORANGE }, line: { color: ORANGE, width: 0 },
         })
         // Slide title
         slide.addText(sd.title, {
-          x: 0.45, y: 0.1, w: 9.1, h: 1.0,
+          x: 0.45, y: 0.12, w: 9.1, h: 1.01,
           fontFace: 'Calibri', fontSize: 22, bold: true, color: WHITE,
           align: 'left', valign: 'middle',
         })
 
         // Lobby watermark bottom right
         slide.addText('Lobby İletişim', {
-          x: 7.6, y: 7.15, w: 2.2, h: 0.28,
-          fontFace: 'Calibri', fontSize: 8, color: 'CCCCCC', italic: true, align: 'right',
+          x: 7.5, y: 7.1, w: 2.3, h: 0.3,
+          fontFace: 'Calibri', fontSize: 8, color: 'CCCCCC', align: 'right',
         })
 
-        let yPos = 1.45
+        let yPos = 1.5
 
         // Subtitle (H2)
         if (sd.subtitle) {
           slide.addText(sd.subtitle, {
-            x: 0.45, y: yPos, w: 9.1, h: 0.42,
+            x: 0.45, y: yPos, w: 9.1, h: 0.4,
             fontFace: 'Calibri', fontSize: 14, bold: true, color: ORANGE, align: 'left',
           })
-          yPos += 0.52
+          yPos += 0.55
         }
 
-        const availH = 7.15 - yPos - 0.1
+        const availH = Math.max(7.0 - yPos, 1.0)
 
         if (sd.hasBullets) {
-          // Bullet points
-          const items = sd.bullets.slice(0, 8).map((b) => ({
-            text: b.length > 130 ? b.slice(0, 127) + '…' : b,
-            options: {
-              bullet: { type: 'bullet' as const },
-              fontFace: 'Calibri',
-              fontSize: 15,
-              color: GRAY,
-              paraSpaceAfter: 6,
-            },
-          }))
-          slide.addText(items, {
+          // Use unicode bullets as plain text — most reliable cross-version approach
+          const bulletLines = sd.bullets
+            .slice(0, 8)
+            .map((b) => '\u2022  ' + (b.length > 130 ? b.slice(0, 127) + '\u2026' : b))
+            .join('\n')
+          slide.addText(bulletLines, {
             x: 0.45, y: yPos, w: 9.1, h: availH,
             fontFace: 'Calibri', fontSize: 15, color: GRAY,
-            valign: 'top', wrap: true,
+            valign: 'top', wrap: true, lineSpacingMultiple: 1.4,
           })
         } else if (sd.bodyText) {
           slide.addText(sd.bodyText, {
             x: 0.45, y: yPos, w: 9.1, h: availH,
             fontFace: 'Calibri', fontSize: 15, color: GRAY,
-            valign: 'top', wrap: true,
+            valign: 'top', wrap: true, lineSpacingMultiple: 1.4,
           })
         }
       }
@@ -522,21 +516,21 @@ export async function POST(req: NextRequest) {
       // ── Closing slide ────────────────────────────────────────────────────
       const end = prs.addSlide()
       end.background = { color: NAVY }
-      end.addShape(prs.ShapeType.rect, {
-        x: 0, y: 0, w: '100%', h: 0.06,
-        fill: { color: ORANGE }, line: { color: ORANGE },
+      end.addShape('rect' as Parameters<typeof end.addShape>[0], {
+        x: 0, y: 0, w: 10, h: 0.06,
+        fill: { color: ORANGE }, line: { color: ORANGE, width: 0 },
       })
-      end.addShape(prs.ShapeType.rect, {
-        x: 0, y: 7.44, w: '100%', h: 0.06,
-        fill: { color: ORANGE }, line: { color: ORANGE },
+      end.addShape('rect' as Parameters<typeof end.addShape>[0], {
+        x: 0, y: 7.44, w: 10, h: 0.06,
+        fill: { color: ORANGE }, line: { color: ORANGE, width: 0 },
       })
       end.addText('Teşekkürler', {
         x: 0.5, y: 2.2, w: 9, h: 1.6,
         fontFace: 'Calibri', fontSize: 44, bold: true, color: WHITE, align: 'center', valign: 'middle',
       })
-      end.addShape(prs.ShapeType.rect, {
+      end.addShape('rect' as Parameters<typeof end.addShape>[0], {
         x: 3.8, y: 4.1, w: 2.4, h: 0.05,
-        fill: { color: ORANGE }, line: { color: ORANGE },
+        fill: { color: ORANGE }, line: { color: ORANGE, width: 0 },
       })
       end.addText('LOBBY İLETİŞİM', {
         x: 0.5, y: 4.35, w: 9, h: 0.45,
